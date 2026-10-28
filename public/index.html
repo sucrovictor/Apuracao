@@ -45,6 +45,16 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;backgroun
 .brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .brand h1{font-family:var(--f-display);font-weight:700;font-size:22px;letter-spacing:-.01em;margin:0}
 .brand .sub{color:var(--ink-3);font-size:12.5px}
+.ftog{margin-left:auto;height:30px;font-size:13px;white-space:nowrap}
+.ftog-ic{display:inline-block;transition:transform .2s}
+header.top.collapsed .ftog-ic{transform:rotate(-90deg)}
+header.top.collapsed .filters{display:none}
+header.top.collapsed .top-in{padding-block:8px}
+.fsum{display:flex;flex-wrap:wrap;gap:6px;border:0;background:none;padding:0;text-align:left;cursor:pointer;color:inherit}
+.fsum .chip{font-size:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:2px 9px;color:var(--ink-2);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.fclose{display:none}
+.fsum[hidden],.filters[hidden]{display:none!important}
+@media (max-width:760px){.brand .sub{display:none}.brand h1{font-size:19px}.btn.fclose{display:inline-block;background:var(--ink);color:var(--surface);border-color:var(--ink)}header.top:not(.collapsed) .top-in{max-height:calc(100vh - 40px);overflow-y:auto}}
 .filters{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end}
 .fld{display:flex;flex-direction:column;gap:3px;min-width:0}
 .fld label,.lbl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
@@ -65,7 +75,8 @@ fieldset.grp[disabled]{opacity:.45}
 main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px;padding-block:16px}
 @media (max-width:980px){main{grid-template-columns:minmax(0,1fr)}}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;min-width:0}
-.mapbox{position:relative;overflow:hidden}
+.mapbox{position:relative;overflow:hidden;scroll-margin-top:130px}
+#sobre-indices{scroll-margin-top:90px}
 .maphead{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px 0;flex-wrap:wrap}
 .crumb{font-family:var(--f-display);font-size:18px;font-weight:700}
 .crumb small{display:block;font-family:var(--f-body);font-weight:400;font-size:12px;color:var(--ink-3)}
@@ -166,8 +177,10 @@ table.list td.hl{background:color-mix(in srgb,var(--focus) 9%,var(--surface))}
 
 <header class="top">
  <div class="wrap top-in">
-  <div class="brand"><h1>Mapa Eleitoral 2026</h1><span class="sub">Presidente · 1º turno 04/10 e 2º turno 25/10 · TSE, IBGE, Inep, Atlas Brasil, IPS Brasil</span></div>
-  <div class="filters">
+  <div class="brand"><h1>Mapa Eleitoral 2026</h1><span class="sub">Presidente · 1º turno 04/10 e 2º turno 25/10 · TSE, IBGE, Inep, Atlas Brasil, IPS Brasil</span>
+   <button class="btn ftog" id="ftoggle" type="button" aria-expanded="true" aria-controls="filters"><span class="ftog-ic" aria-hidden="true">▾</span> <span id="ftogTxt">Recolher filtros</span></button></div>
+  <button class="fsum" id="fsum" type="button" hidden aria-label="Mostrar filtros"></button>
+  <div class="filters" id="filters">
    <div class="fld"><label for="scope">Abrangência</label>
     <select id="scope"></select></div>
    <div class="fld"><label for="q">Município</label>
@@ -188,6 +201,7 @@ table.list td.hl{background:color-mix(in srgb,var(--focus) 9%,var(--surface))}
    </fieldset>
    <span class="disabled-note" id="munNote" hidden>Município selecionado: ordenação e filtros de índice desativados.</span>
    <button class="btn" id="reset" type="button">Limpar filtros</button>
+   <button class="btn fclose" id="fclose" type="button">Ver mapa</button>
   </div>
  </div>
 </header>
@@ -321,8 +335,7 @@ function sortVal(o,key){
   if(a==='dv')return D.dv(o,k); if(a==='dp')return D.dp(o,k);
   return null;
 }
-const COLORS=[{v:'win1',t:'Lula × Flávio · 1º turno'},{v:'win2',t:'Lula × Flávio · 2º turno'}];
-T2K.forEach(k=>{const n=CMAP[k].nm;COLORS.push({v:'p1:'+k,t:n+' · % 1º turno'},{v:'p2:'+k,t:n+' · % 2º turno'},{v:'dp:'+k,t:n+' · Δ p.p. entre turnos'},{v:'dv:'+k,t:n+' · Δ votos entre turnos'})});
+const COLORS=[{v:'win2',t:'Mais votado · 2º turno'},{v:'win1',t:'Mais votado · 1º turno (Lula × Flávio)'},{v:'gdp',t:'Quem cresceu mais · p.p. entre turnos'},{v:'gdv',t:'Quem cresceu mais · votos entre turnos'}];
 function opt(sel,arr){sel.innerHTML=arr.map(o=>`<option value="${o.v}">${o.t}</option>`).join('')}
 
 /* ---------- estado ---------- */
@@ -392,17 +405,12 @@ function rowsView(){
 function rootVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
 function mix(c,t){return d3.interpolateRgb('#f4f4f4',c)(t)}
 function colorFn(rows){
-  const c=S.color;const [a,k]=c.split(':');
-  if(c==='win1'||c==='win2'){
-    const t=c==='win1'?1:2;
-    return {fn:o=>{const T=t===1?o.t1:o.t2;const tot=T.lula+T.flavio;if(!tot)return null;const pl=T.lula/tot;const w=pl>=.5?'lula':'flavio';const m=Math.abs(pl-.5)*2;const s=Math.max(0,Math.min(1,m/0.6));return mix(CMAP[w].col,0.3+0.7*s)},legend:'win',t};
-  }
-  const vals=rows.map(o=>sortVal(o,c)).filter(v=>v!=null&&isFinite(v));
-  if(!vals.length)return {fn:()=>null,legend:'none'};
-  const sorted=vals.slice().sort(d3.ascending);const lo=d3.quantile(sorted,0.02),hi=d3.quantile(sorted,0.98);
-  const col=CMAP[k].col;const interp=t=>d3.interpolateRgb('#f6f6f6',col)(t);
-  const sc=d3.scaleSequential([lo,hi===lo?lo+1:hi],t=>interp(0.06+0.94*t)).clamp(true);
-  return {fn:o=>{const v=sortVal(o,c);return v==null?null:sc(v)},legend:'seq',lo,hi,interp,fmt:a==='dv'?fmtI:f1,unit:a==='dp'?' p.p.':a==='dv'?' votos':'%',signed:a==='dp'||a==='dv'};
+  const c=S.color;
+  const pick=(l,f)=>l===f?null:(l>f?CMAP.lula.col:CMAP.flavio.col);
+  if(c==='win1')return {fn:o=>pick(o.t1.lula,o.t1.flavio),legend:'win',txt:'Cor de quem teve mais votos entre Lula e Flávio no 1º turno'};
+  if(c==='win2')return {fn:o=>pick(o.t2.lula,o.t2.flavio),legend:'win',txt:'Cor de quem teve mais votos no 2º turno'};
+  if(c==='gdp')return {fn:o=>pick(D.dp(o,'lula'),D.dp(o,'flavio')),legend:'win',txt:'Cor de quem ganhou mais pontos percentuais do 1º para o 2º turno'};
+  return {fn:o=>pick(D.dv(o,'lula'),D.dv(o,'flavio')),legend:'win',txt:'Cor de quem ganhou mais votos do 1º para o 2º turno'};
 }
 function drawMap(){
   const lv=effLevel();const rowsF=new Set(rowsView().map(o=>o.id));
@@ -426,7 +434,7 @@ function legend(cf){
   const L=$('legend');
   if(cf.legend==='win'){
     const ks=T2K;
-    L.innerHTML=ks.map(k=>`<span><span class="sw" style="background:${CMAP[k].col}"></span>${CMAP[k].nm}</span>`).join('')+`<span style="color:var(--ink-3)">Cor de quem teve mais votos entre os dois; tom mais forte = vantagem maior${cf.t===1?' (1º turno: só Lula e Flávio)':''}</span>`;
+    L.innerHTML=ks.map(k=>`<span><span class="sw" style="background:${CMAP[k].col}"></span>${CMAP[k].nm}</span>`).join('')+`<span style="color:var(--ink-3)">${cf.txt} · cinza = fora da seleção ou do filtro</span>`;
   } else if(cf.legend==='seq'||cf.legend==='div'){
     const stops=d3.range(0,1.01,0.1).map(t=>cf.interp(cf.legend==='seq'?0.06+0.94*t:t)).join(',');
     const fm=v=>(cf.signed?sgn(v,cf.fmt):cf.fmt.format(v))+(cf.unit||'');
@@ -444,6 +452,7 @@ function showTip(e,o){
   <div class="r"><span>2º · Flávio</span><span class="mono">${f1.format(D.p2(o,'flavio'))}%</span></div>
   <div class="r"><span>Eleitorado</span><span class="mono">${fmtI.format(o.aptos)}</span></div>
   <div class="r"><span>Abstenção 1º · 2º</span><span class="mono">${f1.format(100*(o.aptos-o.t1.comp)/o.aptos)}% · ${f1.format(100*(o.aptos-o.t2.comp)/o.aptos)}%</span></div>
+  ${S.color==='gdp'||S.color==='gdv'?`<div class="r"><span>Δ Lula · Δ Flávio</span><span class="mono">${S.color==='gdp'?sgn(D.dp(o,'lula'),f1)+' · '+sgn(D.dp(o,'flavio'),f1)+' p.p.':sgn(D.dv(o,'lula'),fmtI)+' · '+sgn(D.dv(o,'flavio'),fmtI)}</span></div>`:''}
   ${S.color.startsWith('idx:')?`<div class="r"><span>${IDX.find(d=>d.k===S.color.slice(4)).nm}</span><span class="mono">${fmtIdx(S.color.slice(4),o.idx[S.color.slice(4)])}</span></div>`:''}`;
   tip.hidden=false;const r=box.getBoundingClientRect();let x=e.clientX-r.left+14,y=e.clientY-r.top+14;
   if(x+tip.offsetWidth>r.width-8)x=e.clientX-r.left-tip.offsetWidth-14;if(y+tip.offsetHeight>r.height-8)y=e.clientY-r.top-tip.offsetHeight-14;
@@ -553,6 +562,12 @@ function fallbackCopy(t,done){const ta=document.createElement('textarea');ta.val
 function toast(m){const t=$('toast');t.textContent=m;t.hidden=false;clearTimeout(t._h);t._h=setTimeout(()=>t.hidden=true,2600)}
 
 /* ---------- controles ---------- */
+const hdr=document.querySelector('header.top');
+function setCollapsed(c){hdr.classList.toggle('collapsed',c);$('ftoggle').setAttribute('aria-expanded',String(!c));$('ftogTxt').textContent=c?'Filtros':'Recolher filtros';$('fsum').hidden=!c;if(c)updSum()}
+function updSum(){const o=scopeObj();const chips=[scopeName(o),effLevel()==='uf'?'Por estado':'Por município',COLORS.find(c=>c.v===S.color).t];if(S.scope.t!=='mun')chips.push('Ordem: '+SORTS.find(x=>x.v===S.sort).t+(S.dir<0?' ↓':' ↑'));if(S.fIdx&&S.scope.t!=='mun')chips.push('Filtro: '+IDX.find(d=>d.k===S.fIdx).nm);$('fsum').innerHTML=chips.map(c=>`<span class="chip">${c}</span>`).join('')}
+$('ftoggle').onclick=()=>setCollapsed(!hdr.classList.contains('collapsed'));
+$('fsum').onclick=()=>setCollapsed(false);
+$('fclose').onclick=()=>{setCollapsed(true);document.querySelector('.mapbox').scrollIntoView({behavior:'smooth',block:'start'})};
 function syncControls(){
   const s=S.scope;scopeSel.value=s.t==='mun'?'uf:'+MBY.get(s.k).uf:s.t+':'+s.k;
   $('q').value=s.t==='mun'?munLabel(MBY.get(s.k)):'';
@@ -580,11 +595,11 @@ const num=v=>{v=String(v).trim().replace(',','.');if(v==='')return null;const n=
 $('fMin').addEventListener('input',()=>{S.fMin=num($('fMin').value);S.limit=200;render(false)});
 $('fMax').addEventListener('input',()=>{S.fMax=num($('fMax').value);S.limit=200;render(false)});
 $('reset').onclick=()=>{Object.assign(S,{scope:{t:'br',k:'BR'},lv:'uf',color:'win2',sortType:'v',sort:'p2:lula',dir:-1,fIdx:'',fMin:null,fMax:null,limit:200});syncControls();render(true)};
-function render(refit){drawMap();drawPanels();drawList();if(refit)fit(true)}
+function render(refit){drawMap();drawPanels();drawList();if(hdr.classList.contains('collapsed'))updSum();if(refit)fit(true)}
 const mq=window.matchMedia('(prefers-color-scheme: dark)');mq.addEventListener&&mq.addEventListener('change',()=>drawMap());
 new MutationObserver(()=>drawMap()).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 $('gen').textContent=`Dados de votação: TSE, Portal de Dados Abertos, arquivos votacao_candidato_munzona e detalhe_votacao_munzona 2026 (gerados em ${DATA.gerado}). Totais conferidos com a totalização oficial: 1º turno 119.300.788 votos válidos; 2º turno 124.082.273.`;
-syncControls();render(false);fit(false);
+syncControls();render(false);fit(false);if(window.matchMedia('(max-width:760px)').matches)setCollapsed(true);
 })();
 </script>
 
